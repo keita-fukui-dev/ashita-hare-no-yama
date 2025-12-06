@@ -9,7 +9,8 @@ type Mountain = {
   reading: string;
   elevation: number;
   category: string;
-  prefecture: string;
+  prefecture: string; // 表示用（ソート済み）
+  prefectures: string[]; // 検索用（分割・ソート済み）
   latitude: number;
   longitude: number;
 };
@@ -77,6 +78,24 @@ const PREFECTURE_ORDER = [
   "沖縄県",
 ];
 
+function splitAndOrderPrefectures(input: string): string[] {
+  const parts = input
+    .split(/[・,、／/，]/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const unique = Array.from(new Set(parts));
+
+  return unique.sort((a, b) => {
+    const ai = PREFECTURE_ORDER.indexOf(a);
+    const bi = PREFECTURE_ORDER.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b, "ja");
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+}
+
 const WEATHER_LABEL: Record<number, string> = {
   0: "快晴",
   1: "ほぼ快晴",
@@ -122,6 +141,11 @@ function parseMountains(csvText: string): Mountain[] {
       const latitude = Number(cells[7]);
       const longitude = Number(cells[8]);
       const elevation = Number(cells[4]);
+      const rawPrefecture = cells[prefectureIndex] ?? cells[6];
+      const prefectures = splitAndOrderPrefectures(rawPrefecture);
+      const prefectureLabel = prefectures.length
+        ? prefectures.join("・")
+        : rawPrefecture;
 
       if (Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
 
@@ -132,7 +156,8 @@ function parseMountains(csvText: string): Mountain[] {
         reading: cells[readingIndex] ?? cells[3],
         elevation: Number.isNaN(elevation) ? 0 : elevation,
         category: cells[5],
-        prefecture: cells[prefectureIndex] ?? cells[6],
+        prefecture: prefectureLabel,
+        prefectures,
         latitude,
         longitude,
       };
@@ -224,7 +249,8 @@ export default function Home() {
   const prefectures = useMemo(() => {
     const set = new Set(
       mountains
-        .map((m) => m.prefecture.trim())
+        .flatMap((m) => m.prefectures)
+        .map((p) => p.trim())
         .filter((p) => p && p !== "都道府県"),
     );
     const list = Array.from(set);
@@ -242,7 +268,8 @@ export default function Home() {
     const normalizedQuery = query.trim();
     return mountains
       .filter((m) => {
-        const matchPref = prefecture === "all" || m.prefecture === prefecture;
+        const matchPref =
+          prefecture === "all" || m.prefectures.includes(prefecture);
         const matchQuery =
           !normalizedQuery ||
           m.name.includes(normalizedQuery) ||
@@ -505,10 +532,6 @@ export default function Home() {
                         {typeof mountain.weather.precipitationProbability === "number"
                           ? "%"
                           : ""}
-                      </span>
-                      <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 shadow-sm ring-1 ring-slate-100">
-                        lat {mountain.latitude.toFixed(3)} · lon{" "}
-                        {mountain.longitude.toFixed(3)}
                       </span>
                     </div>
                   </div>
